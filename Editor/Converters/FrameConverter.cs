@@ -105,8 +105,8 @@ namespace SoobakFigma2Unity.Editor.Converters
 
         private GameObject CreateGameObject(FigmaNode node, GameObject parent)
         {
-            var go = new GameObject(node.Name);
-            var rt = go.AddComponent<RectTransform>();
+            var go = new GameObject(node.Name, typeof(RectTransform));
+            var rt = go.GetComponent<RectTransform>();
 
             // Initial size from Figma's bounding box. ConvertChildren applies the actual
             // anchor / position layout afterwards (AutoLayoutMapper or AnchorMapper), but

@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using SoobakFigma2Unity.Editor.Models;
+using UnityEditor;
 using UnityEngine;
 
 namespace SoobakFigma2Unity.Editor.Window
@@ -22,12 +24,14 @@ namespace SoobakFigma2Unity.Editor.Window
     {
         private List<FrameTreeItem> _roots = new List<FrameTreeItem>();
         private Vector2 _scrollPosition;
+        private string _searchQuery = string.Empty;
 
         public IReadOnlyList<FrameTreeItem> Roots => _roots;
 
         public void Clear()
         {
             _roots.Clear();
+            _searchQuery = string.Empty;
         }
 
         /// <summary>
@@ -85,13 +89,39 @@ namespace SoobakFigma2Unity.Editor.Window
         /// </summary>
         public void OnGUI(float height)
         {
+            DrawSearchField();
+
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition,
                 GUILayout.Height(height));
 
             foreach (var root in _roots)
-                DrawItem(root);
+            {
+                if (MatchesSearch(root))
+                    DrawItem(root);
+            }
+
+            if (_roots.Count > 0 && !HasSearchResults())
+                EditorGUILayout.HelpBox($"No frames found for \"{_searchQuery}\".", MessageType.Info);
 
             GUILayout.EndScrollView();
+        }
+
+        private void DrawSearchField()
+        {
+            GUILayout.BeginHorizontal();
+            _searchQuery = EditorGUILayout.TextField(
+                new GUIContent("Search", "Filter pages and frames by name."),
+                _searchQuery);
+
+            using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(_searchQuery)))
+            {
+                if (GUILayout.Button("Clear", GUILayout.Width(48f)))
+                {
+                    _searchQuery = string.Empty;
+                    GUI.FocusControl(null);
+                }
+            }
+            GUILayout.EndHorizontal();
         }
 
         private void DrawItem(FrameTreeItem item)
@@ -125,11 +155,55 @@ namespace SoobakFigma2Unity.Editor.Window
 
             GUILayout.EndHorizontal();
 
-            if (item.Expanded)
+            if (item.Expanded || HasSearchQuery)
             {
                 foreach (var child in item.Children)
-                    DrawItem(child);
+                {
+                    if (ShouldDrawChild(item, child))
+                        DrawItem(child);
+                }
             }
+        }
+
+        private bool HasSearchQuery => !string.IsNullOrWhiteSpace(_searchQuery);
+
+        private bool MatchesName(FrameTreeItem item)
+        {
+            return !string.IsNullOrEmpty(item.Name) &&
+                   item.Name.IndexOf(_searchQuery.Trim(), StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private bool MatchesSearch(FrameTreeItem item)
+        {
+            if (!HasSearchQuery || MatchesName(item))
+                return true;
+
+            foreach (var child in item.Children)
+            {
+                if (MatchesSearch(child))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool ShouldDrawChild(FrameTreeItem parent, FrameTreeItem child)
+        {
+            return !HasSearchQuery || MatchesName(parent) || MatchesSearch(child);
+        }
+
+        private bool HasSearchResults()
+        {
+            if (!HasSearchQuery)
+                return true;
+
+            foreach (var root in _roots)
+            {
+                if (MatchesSearch(root))
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

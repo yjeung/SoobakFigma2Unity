@@ -191,8 +191,8 @@ namespace SoobakFigma2Unity.Editor.Pipeline
         private void ConvertAndSaveFrame(FigmaNode frameNode, ImportContext ctx, ImportProfile profile)
         {
             _logger.Info($"Converting: {frameNode.Name}");
-            var rootGo = new GameObject(frameNode.Name);
-            var rootRt = rootGo.AddComponent<RectTransform>();
+            var rootGo = new GameObject(frameNode.Name, typeof(RectTransform));
+            var rootRt = rootGo.GetComponent<RectTransform>();
             rootRt.sizeDelta = SizeCalculator.GetSize(frameNode);
             rootRt.pivot = new Vector2(0.5f, 0.5f);
             rootRt.anchorMin = new Vector2(0.5f, 0.5f);
@@ -480,8 +480,8 @@ namespace SoobakFigma2Unity.Editor.Pipeline
 
         private GameObject ConvertNodeToGameObject(FigmaNode node, ImportContext ctx, ImportProfile profile)
         {
-            var go = new GameObject(node.Name);
-            go.AddComponent<RectTransform>().sizeDelta = SizeCalculator.GetSize(node);
+            var go = new GameObject(node.Name, typeof(RectTransform));
+            go.GetComponent<RectTransform>().sizeDelta = SizeCalculator.GetSize(node);
             ApplyFrameProperties(go, node, ctx);
             if (profile.ConvertAutoLayout && node.IsAutoLayout) AutoLayoutMapper.Apply(go, node);
             bool isRasterized = ctx.NodeSprites.ContainsKey(node.Id);
@@ -538,8 +538,7 @@ namespace SoobakFigma2Unity.Editor.Pipeline
             }
             else
             {
-                go = new GameObject(node.Name);
-                go.AddComponent<RectTransform>();
+                go = new GameObject(node.Name, typeof(RectTransform));
                 go.transform.SetParent(parentGo.transform, false);
                 ctx.NodeIdentities[go.transform] = new ImportContext.NodeIdentityRecord(node.Id, node.ComponentId);
             }

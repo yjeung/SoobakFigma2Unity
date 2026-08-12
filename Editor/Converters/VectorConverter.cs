@@ -25,8 +25,7 @@ namespace SoobakFigma2Unity.Editor.Converters
 
         public GameObject Convert(FigmaNode node, GameObject parent, ImportContext ctx)
         {
-            var go = new GameObject(node.Name);
-            go.AddComponent<RectTransform>();
+            var go = new GameObject(node.Name, typeof(RectTransform));
             if (parent != null)
                 go.transform.SetParent(parent.transform, false);
             ctx.NodeIdentities[go.transform] = new ImportContext.NodeIdentityRecord(node.Id, null);
