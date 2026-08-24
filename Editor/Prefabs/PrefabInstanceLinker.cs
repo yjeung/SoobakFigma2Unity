@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using SoobakFigma2Unity.Editor.Color;
 using SoobakFigma2Unity.Editor.Models;
 using SoobakFigma2Unity.Editor.Pipeline;
@@ -39,9 +41,18 @@ namespace SoobakFigma2Unity.Editor.Prefabs
             if (string.IsNullOrEmpty(componentId))
                 return null;
 
-            // Look up the prefab path for this component
-            if (!ctx.GeneratedPrefabs.TryGetValue(componentId, out var prefabPath))
+            // Prefer the exact component-id mapping generated during this import. Components
+            // from another selection/import are not present in that map, so fall back to the
+            // stable prefab filename derived from Figma's component metadata.
+            if (!ctx.GeneratedPrefabs.TryGetValue(componentId, out var prefabPath) &&
+                !TryFindPrefabByName(instanceNode, componentId, ctx, out prefabPath))
+            {
                 return null;
+            }
+
+            // Cache a successful name lookup so every later instance of the same component
+            // uses the same asset without rescanning the Project window.
+            ctx.GeneratedPrefabs[componentId] = prefabPath;
 
             var prefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             if (prefabAsset == null)
@@ -62,6 +73,84 @@ namespace SoobakFigma2Unity.Editor.Prefabs
 
             _logger.Info($"{instanceNode.Name}: linked to prefab '{prefabAsset.name}'");
             return instance;
+        }
+
+        private bool TryFindPrefabByName(
+            FigmaNode instanceNode,
+            string componentId,
+            ImportContext ctx,
+            out string prefabPath)
+        {
+            prefabPath = null;
+            if (ctx.Profile == null || string.IsNullOrWhiteSpace(ctx.Profile.ComponentOutputPath))
+                return false;
+
+            var candidates = new List<string>();
+            if (ctx.Components.TryGetValue(componentId, out var component))
+            {
+                if (!string.IsNullOrEmpty(component.ComponentSetId) &&
+                    ctx.ComponentSets.TryGetValue(component.ComponentSetId, out var componentSet))
+                {
+                    AddCandidate(candidates, ComponentPrefabNamer.BuildVariantPrefabName(
+                        componentSet.Name,
+                        component.Name));
+                }
+
+                AddCandidate(candidates, ComponentPrefabNamer.SanitizeFileName(component.Name));
+            }
+
+            AddCandidate(candidates, ComponentPrefabNamer.SanitizeFileName(instanceNode.Name));
+
+            var guids = AssetDatabase.FindAssets(
+                "t:Prefab",
+                new[] { ctx.Profile.ComponentOutputPath });
+
+            // Candidate order matters: the component-set + full property name is more
+            // specific than the raw component name, and both are safer than an instance's
+            // locally overridden layer name.
+            foreach (var candidate in candidates)
+            {
+                var matches = new List<string>();
+                foreach (var guid in guids)
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (string.Equals(
+                        Path.GetFileNameWithoutExtension(path),
+                        candidate,
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        matches.Add(path);
+                    }
+                }
+
+                if (matches.Count == 1)
+                {
+                    prefabPath = matches[0];
+                    _logger.Info($"{instanceNode.Name}: matched prefab by name '{candidate}'");
+                    return true;
+                }
+
+                if (matches.Count > 1)
+                {
+                    _logger.Warn(
+                        $"{instanceNode.Name}: multiple prefabs named '{candidate}' found under " +
+                        $"{ctx.Profile.ComponentOutputPath}; component was not linked.");
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private static void AddCandidate(List<string> candidates, string candidate)
+        {
+            if (string.IsNullOrWhiteSpace(candidate)) return;
+            foreach (var existing in candidates)
+            {
+                if (string.Equals(existing, candidate, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+            candidates.Add(candidate);
         }
 
         /// <summary>

@@ -83,7 +83,8 @@ namespace SoobakFigma2Unity.Editor.Converters
                 || t == FigmaNodeType.COMPONENT
                 || t == FigmaNodeType.COMPONENT_SET
                 || t == FigmaNodeType.INSTANCE
-                || t == FigmaNodeType.SECTION;
+                || t == FigmaNodeType.SECTION
+                || t == FigmaNodeType.TRANSFORM_GROUP;
             if (isContainer && node.HasChildren)
                 return false;
 

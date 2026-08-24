@@ -75,18 +75,18 @@ namespace SoobakFigma2Unity.Editor.Prefabs
                 .ToList();
 
             var baseVariant = parsedVariants[0];
-            var baseName = SanitizeName(componentSetNode.Name);
 
             for (int i = 0; i < parsedVariants.Count; i++)
             {
                 var variant = parsedVariants[i];
                 var variantGo = convertFunc(variant.Node);
 
-                // The first variant takes the bare component-set name; the rest get a
-                // suffix derived from the props that differ from the first variant.
-                var fileName = i == 0
-                    ? baseName
-                    : BuildVariantName(baseName, variant.Props, baseVariant.Props);
+                // Every variant includes its property values in the filename. The first
+                // item must not silently claim the bare component-set name because a
+                // later import cannot infer which variant that prefab represents.
+                var fileName = ComponentPrefabNamer.BuildVariantPrefabName(
+                    componentSetNode.Name,
+                    variant.Node.Name);
                 var variantPath = Path.Combine(outputDir, $"{fileName}.prefab");
 
                 // Each variant prefab carries its own componentId so InstanceConverter's
@@ -149,33 +149,5 @@ namespace SoobakFigma2Unity.Editor.Prefabs
             return result;
         }
 
-        /// <summary>
-        /// Build a variant prefab name from the differing properties.
-        /// e.g., base="Button", props differ in "State" → "Button_Hover"
-        /// </summary>
-        private string BuildVariantName(
-            string baseName,
-            Dictionary<string, string> variantProps,
-            Dictionary<string, string> baseProps)
-        {
-            var diffs = new List<string>();
-            foreach (var kv in variantProps)
-            {
-                if (!baseProps.TryGetValue(kv.Key, out var baseVal) || baseVal != kv.Value)
-                    diffs.Add(kv.Value);
-            }
-
-            if (diffs.Count == 0)
-                diffs.Add("Variant");
-
-            return SanitizeName($"{baseName}_{string.Join("_", diffs)}");
-        }
-
-        private static string SanitizeName(string name)
-        {
-            foreach (var c in Path.GetInvalidFileNameChars())
-                name = name.Replace(c, '_');
-            return name.Trim().Trim('.');
-        }
     }
 }

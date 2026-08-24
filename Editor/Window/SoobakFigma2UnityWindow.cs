@@ -6,7 +6,9 @@ using SoobakFigma2Unity.Editor.Mapping;
 using SoobakFigma2Unity.Editor.Pipeline;
 using SoobakFigma2Unity.Editor.Settings;
 using SoobakFigma2Unity.Editor.Util;
+using SoobakFigma2Unity.Runtime;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace SoobakFigma2Unity.Editor.Window
@@ -29,6 +31,7 @@ namespace SoobakFigma2Unity.Editor.Window
         private bool _isImporting;
         private Vector2 _mainScroll;
         private Vector2 _logScroll;
+        private readonly Dictionary<string, string> _prefabPathByNodeId = new Dictionary<string, string>();
 
         private string _figmaUrl = "";
         private string _token = "";
@@ -129,7 +132,7 @@ namespace SoobakFigma2Unity.Editor.Window
         private void DrawFrameSelectionSection()
         {
             EditorGUILayout.LabelField("Frame Selection", EditorStyles.boldLabel);
-            _treeView.OnGUI(180);
+            _treeView.OnGUI(180, GetImportedPrefabPath, OpenImportedPrefab);
             EditorGUILayout.Space(8);
         }
 
@@ -350,6 +353,7 @@ namespace SoobakFigma2Unity.Editor.Window
                 AsyncHelper.RunOnMainThread(() =>
                 {
                     _treeView.BuildFromDocument(file.Document);
+                    RefreshImportedPrefabLinks();
                     _logger.Success($"Fetched: {file.Name} ({_treeView.Roots.Count} pages)");
                     _isFetching = false;
                     Repaint();
@@ -385,10 +389,82 @@ namespace SoobakFigma2Unity.Editor.Window
                     _lastImportedPaths.Clear();
                     foreach (var p in pipeline.SavedPrefabPaths) _lastImportedPaths.Add(p);
                     if (_lastImportedPaths.Count > 0) _lastImportAt = DateTime.UtcNow;
+                    RefreshImportedPrefabLinks();
                     _isImporting = false;
                     Repaint();
                 });
             }, e => { _logger.Error($"Import failed: {e.Message}"); _isImporting = false; Repaint(); });
+        }
+
+        private string GetImportedPrefabPath(string nodeId)
+        {
+            return !string.IsNullOrEmpty(nodeId) && _prefabPathByNodeId.TryGetValue(nodeId, out var path)
+                ? path
+                : null;
+        }
+
+        private void RefreshImportedPrefabLinks()
+        {
+            _prefabPathByNodeId.Clear();
+
+            // Prefer the selected frame's screen prefab when the same Figma node also
+            // produced an extracted component prefab.
+            var folders = new List<string>();
+            AddValidFolder(folders, _profile.ScreenOutputPath);
+            AddValidFolder(folders, _profile.PrefabOutputPath);
+            AddValidFolder(folders, _profile.ComponentOutputPath);
+            if (folders.Count == 0)
+                return;
+
+            foreach (var folder in folders)
+            {
+                var guids = AssetDatabase.FindAssets("t:Prefab", new[] { folder });
+                foreach (var guid in guids)
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    var manifest = prefab != null ? prefab.GetComponent<FigmaPrefabManifest>() : null;
+                    var nodeId = manifest != null ? manifest.GetNodeId(prefab.transform) : null;
+                    if (!string.IsNullOrEmpty(nodeId) && !_prefabPathByNodeId.ContainsKey(nodeId))
+                        _prefabPathByNodeId[nodeId] = path;
+                }
+            }
+        }
+
+        private static void AddValidFolder(List<string> folders, string path)
+        {
+            if (string.IsNullOrEmpty(path) || !AssetDatabase.IsValidFolder(path))
+                return;
+
+            foreach (var folder in folders)
+            {
+                if (string.Equals(folder, path, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+            folders.Add(path);
+        }
+
+        private void OpenImportedPrefab(string path)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null)
+            {
+                _logger.Warn($"Prefab is not available yet: {path}");
+                return;
+            }
+
+            Selection.activeObject = prefab;
+            EditorGUIUtility.PingObject(prefab);
+
+            try
+            {
+                PrefabStageUtility.OpenPrefab(path);
+            }
+            catch (Exception e)
+            {
+                _logger.Warn($"Could not open Prefab Mode; opened in Project instead: {e.Message}");
+                AssetDatabase.OpenAsset(prefab);
+            }
         }
     }
 }

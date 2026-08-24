@@ -21,7 +21,7 @@ namespace SoobakFigma2Unity.Editor.Converters
             var t = node.NodeType;
             return t == FigmaNodeType.FRAME || t == FigmaNodeType.GROUP ||
                    t == FigmaNodeType.COMPONENT || t == FigmaNodeType.COMPONENT_SET ||
-                   t == FigmaNodeType.SECTION;
+                   t == FigmaNodeType.SECTION || t == FigmaNodeType.TRANSFORM_GROUP;
         }
 
         public GameObject Convert(FigmaNode node, GameObject parent, ImportContext ctx)

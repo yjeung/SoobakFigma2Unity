@@ -87,7 +87,10 @@ namespace SoobakFigma2Unity.Editor.Window
         /// <summary>
         /// Draw the tree with checkboxes in the Editor Window.
         /// </summary>
-        public void OnGUI(float height)
+        public void OnGUI(
+            float height,
+            Func<string, string> prefabPathResolver = null,
+            Action<string> openPrefab = null)
         {
             DrawSearchField();
 
@@ -97,7 +100,7 @@ namespace SoobakFigma2Unity.Editor.Window
             foreach (var root in _roots)
             {
                 if (MatchesSearch(root))
-                    DrawItem(root);
+                    DrawItem(root, prefabPathResolver, openPrefab);
             }
 
             if (_roots.Count > 0 && !HasSearchResults())
@@ -124,7 +127,10 @@ namespace SoobakFigma2Unity.Editor.Window
             GUILayout.EndHorizontal();
         }
 
-        private void DrawItem(FrameTreeItem item)
+        private void DrawItem(
+            FrameTreeItem item,
+            Func<string, string> prefabPathResolver,
+            Action<string> openPrefab)
         {
             GUILayout.BeginHorizontal();
             GUILayout.Space(item.Depth * 20f);
@@ -153,6 +159,18 @@ namespace SoobakFigma2Unity.Editor.Window
                 : $"{item.Name} [{item.Type}]";
             GUILayout.Label(label);
 
+            if (item.Type != "PAGE" && prefabPathResolver != null)
+            {
+                var prefabPath = prefabPathResolver(item.NodeId);
+                if (!string.IsNullOrEmpty(prefabPath))
+                {
+                    var openIcon = EditorGUIUtility.IconContent("Prefab Icon");
+                    openIcon.tooltip = $"Open imported prefab\n{prefabPath}";
+                    if (GUILayout.Button(openIcon, GUIStyle.none, GUILayout.Width(20f), GUILayout.Height(18f)))
+                        openPrefab?.Invoke(prefabPath);
+                }
+            }
+
             GUILayout.EndHorizontal();
 
             if (item.Expanded || HasSearchQuery)
@@ -160,7 +178,7 @@ namespace SoobakFigma2Unity.Editor.Window
                 foreach (var child in item.Children)
                 {
                     if (ShouldDrawChild(item, child))
-                        DrawItem(child);
+                        DrawItem(child, prefabPathResolver, openPrefab);
                 }
             }
         }

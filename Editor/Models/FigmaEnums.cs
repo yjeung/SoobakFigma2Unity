@@ -25,6 +25,7 @@ namespace SoobakFigma2Unity.Editor.Models
         TABLE,
         TABLE_CELL,
         WASHI_TAPE,
+        TRANSFORM_GROUP,
         UNKNOWN
     }
 

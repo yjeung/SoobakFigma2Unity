@@ -73,12 +73,10 @@ namespace SoobakFigma2Unity.Editor.Settings
 
         // FLAT rasterisation per atomic-visual-group.
         //
-        // When true, any FRAME / GROUP / INSTANCE whose entire descendant tree is
-        // purely decorative (no TEXT nodes, no nested INSTANCEs — only rectangles,
-        // vectors, ellipses, etc.) is exported as a single PNG and lands as one
-        // GameObject with one Image. Containers that include text or other
-        // instances stay structural so the text remains an editable
-        // TextMeshProUGUI and nested instances keep their own prefab links.
+        // When true, an explicitly image-named (`img_`, `ic_`, or `slice_`) FRAME /
+        // GROUP / INSTANCE whose descendant tree is purely decorative is exported
+        // as a single PNG and lands as one GameObject with one Image. Nodes without
+        // one of those prefixes stay structural regardless of their geometry.
         //
         // Why this matters: Figma's compositing (alpha, blend modes, mask
         // intersections, stroke offsets, drop-shadow under/over rules) does not
@@ -88,7 +86,7 @@ namespace SoobakFigma2Unity.Editor.Settings
         // compositing question for the parts that don't need editing while
         // preserving the editability of the parts that do.
         //
-        // Concrete win: a button variant whose `bg_slice` decorative instance
+        // Concrete win: a button variant whose `slice_btn_primary` decorative instance
         // contains only inner rectangles ships as one bg PNG (curves intact),
         // while the variant's "Label" text node stays a TMP for runtime editing.
         //

@@ -182,7 +182,19 @@ namespace SoobakFigma2Unity.Editor.Pipeline
             // each screen frame so its INSTANCEs link back as PrefabInstances.
             GenerateComponentPrefabs(frames, ctx, profile);
             foreach (var frame in frames)
+            {
+                // A COMPONENT_SET is only an authoring-time container for its variant
+                // COMPONENT children. PrefabVariantBuilder already saved those children;
+                // saving the set wrapper again creates a redundant "component group"
+                // prefab/screen that should never be instantiated at runtime.
+                if (frame.NodeType == FigmaNodeType.COMPONENT_SET)
+                {
+                    _logger.Info($"Skipping component-set wrapper prefab: {frame.Name}");
+                    continue;
+                }
+
                 ConvertAndSaveFrame(frame, ctx, profile);
+            }
             AssetDatabase.Refresh();
         }
 
@@ -773,78 +785,38 @@ namespace SoobakFigma2Unity.Editor.Pipeline
         {
             if (NodeConverterRegistry.ShouldSkip(node)) return;
 
-            // Atomic-visual-group rasterisation: a FRAME / GROUP / INSTANCE whose
-            // entire descendant tree is purely decorative (no TEXT nodes, no nested
-            // INSTANCEs — only rectangles, vectors, ellipses, etc.) ships as one PNG
-            // for that whole subtree.
-            bool atomicVisualGroup = ctx.Profile != null
-                && ctx.Profile.RasterizeAtomicVisualGroups
-                && IsAtomicVisualGroup(node);
+            // Raster assets are opt-in by Figma layer naming. Geometry alone is not a
+            // reliable signal that a node should become a PNG: rounded rectangles,
+            // gradients, strokes, and decorative groups are often structural UI that
+            // designers expect to remain editable in Unity. Only explicitly named
+            // image nodes are allowed into the raster/download pipeline.
+            bool isNamedImage = HasImageExportPrefix(node.Name);
 
-            // Composite container: mixed text + visuals (decoratives and/or nested
-            // INSTANCEs). We do NOT bake the container as one PNG (that would include
-            // text and produce a baked-text artefact behind the TMP overlay). Instead
-            // each visual leaf gets rasterised individually, and CompositeBuilder
-            // alpha-blends them into one container-sized PNG after download. Each TEXT
-            // descendant becomes an editable TMP overlaid on the composite.
-            //
-            // Force-add every visual leaf to NodesToRasterize here. The recursive walk
-            // would catch most decoratives via NeedsRasterization, but it WOULDN'T catch
-            // nested INSTANCEs (the container guard inside NeedsRasterization rejects
-            // INSTANCEs that have their own children, which is the common case). Without
-            // this explicit add, the composite would be missing the INSTANCE layers.
-            bool compositeContainer = ctx.Profile != null
-                && ctx.Profile.RasterizeAtomicVisualGroups
-                && IsCompositeContainer(node);
-            if (compositeContainer)
-            {
-                ctx.CompositeContainerIds.Add(node.Id);
-                var leaves = new List<FigmaNode>();
-                CollectDecorativeLeaves(node, leaves);
-                foreach (var leaf in leaves)
-                {
-                    if (string.IsNullOrEmpty(leaf.Id)) continue;
-                    ctx.NodesToRasterize.Add(leaf.Id);
-                    if (!ctx.NodeRasterBoundsModes.ContainsKey(leaf.Id))
-                        ctx.NodeRasterBoundsModes[leaf.Id] = ChooseRasterBoundsMode(leaf);
-                }
-            }
-
-            bool needsRaster = atomicVisualGroup || NodeConverterRegistry.NeedsRasterization(node);
-            if (needsRaster)
+            // The prefix is an explicit designer instruction: export this exact node as
+            // one image, even when it is a Repeat-generated container with children,
+            // nested instances, or text. Stop here so descendants are not exported a
+            // second time on top of the parent image.
+            if (isNamedImage)
             {
                 ctx.NodesToRasterize.Add(node.Id);
                 ctx.NodeRasterBoundsModes[node.Id] = ChooseRasterBoundsMode(node);
-                // Node will be rasterized as a whole — don't also download the raw fill image
-                // (raw fill is the uncropped sprite sheet, rasterization gives the correct crop)
+                return;
             }
-            else if (node.Fills != null)
-            {
-                // Only collect fill image refs for nodes that are NOT rasterized
-                foreach (var fill in node.Fills)
-                {
-                    if (!fill.Visible || !fill.IsImage || string.IsNullOrEmpty(fill.ImageRef))
-                        continue;
-                    ctx.ImageFillRefs.Add(fill.ImageRef);
-                    // Remember the first node name we saw using this fill so the
-                    // downloaded PNG gets a readable filename later. Skip empty
-                    // names so the allocator's fallback ("node") doesn't win the slot.
-                    if (!string.IsNullOrEmpty(node.Name) &&
-                        !ctx.ImageFillNameHints.ContainsKey(fill.ImageRef))
-                    {
-                        ctx.ImageFillNameHints[fill.ImageRef] = node.Name;
-                    }
-                }
-            }
-
-            // Atomic visual group: the whole subtree is folded into the parent's PNG, so we
-            // shouldn't queue its descendants for individual rasterisation. Stop walking
-            // here — the Figma export at this node level captures everything inside.
-            if (atomicVisualGroup) return;
 
             if (node.Children != null)
                 foreach (var child in node.Children)
                     CollectImageRequirements(child, ctx);
+        }
+
+        private static bool HasImageExportPrefix(string nodeName)
+        {
+            if (string.IsNullOrWhiteSpace(nodeName))
+                return false;
+
+            string trimmedName = nodeName.TrimStart();
+            return trimmedName.StartsWith("img_", System.StringComparison.OrdinalIgnoreCase)
+                || trimmedName.StartsWith("ic_", System.StringComparison.OrdinalIgnoreCase)
+                || trimmedName.StartsWith("slice_", System.StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsEmptyGroup(FigmaNode n) =>

@@ -36,6 +36,20 @@ namespace SoobakFigma2Unity.Editor.Pipeline
             return $"{outputDir}/{sanitized}_{shortId}.prefab";
         }
 
+        /// <summary>
+        /// Builds the stable prefab name for a COMPONENT_SET child.
+        /// Every variant, including the first one, includes all of its property values:
+        /// "Button" + "Style=Primary, State=Default" → "Button_Primary_Default".
+        /// </summary>
+        public static string BuildVariantPrefabName(string componentSetName, string variantName)
+        {
+            var baseName = SanitizeFileName(componentSetName);
+            var variantValues = SanitizeFileName(variantName);
+            return string.IsNullOrEmpty(variantValues)
+                ? baseName
+                : SanitizeFileName($"{baseName}_{variantValues}");
+        }
+
         // Strip characters Unity / Windows reject in file names AND the Figma variant-
         // syntax characters that read as noise in a Unity Project window.
         //
@@ -46,7 +60,7 @@ namespace SoobakFigma2Unity.Editor.Pipeline
         // any "<key>=" prefix from each comma-segment, leaving the values joined by
         // underscores: e.g. "primary_XL_Default". Designer-typed component names without
         // "=" pass through unchanged so we don't over-mangle conventional names.
-        private static string SanitizeFileName(string name)
+        public static string SanitizeFileName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "Component";
 
